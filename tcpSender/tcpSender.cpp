@@ -65,14 +65,60 @@ int Connect(string ip, string port)
         throw(string("Error opening connection"));
     return sock;
 }
-int Send(int socketDesc, string file)
+
+
+char *Framer(const char *msg_str, int msg_len, int buff_size, int *start)
 {
-    int n = send(socketDesc, file.c_str(), strlen(file.c_str()), 0);
-    return n;
+    int rest_bytes = msg_len - *start, rest_frame;
+    string rest_bytes_str = to_string(rest_bytes) + "|";
+    rest_frame = buff_size - rest_bytes_str.length();
+    char *frame = new char[buff_size];
+    strcpy(frame, rest_bytes_str.c_str());
+    strncpy(frame + rest_bytes_str.length(), msg_str + *start, rest_frame);
+    *start = *start + rest_frame;
+    return frame;
+}
+
+int Send(int socketDesc, const char *msg_str, int msg_len)
+{
+    int buff_size = 1000, start = 0;
+    while (start < msg_len)
+    {
+        char *frame = Framer(msg_str, msg_len, buff_size, &start);
+        int n = send(socketDesc, frame, buff_size, 0);
+        /* if (n == -1)
+        {
+            return 1;
+        } */
+        if (start + buff_size> msg_len)
+            cout<<start<<endl;
+    }
+    return 0;
+}
+
+void FileFiler()
+{
+    int size = 14000;
+    string str;
+    fstream fileStream("text.txt",fstream::out);
+    if (fileStream.fail())
+    {
+        throw string("No such file");
+        return;
+    }
+
+    for (int i = 0, total = 0; total < size; i++)
+    {
+        str+="line\t";
+        fileStream<<to_string(i)<<" "<< str<<endl;
+        total+=str.length()+1+to_string(i).length();
+    }
+    fileStream.close();
 }
 
 int main(int argc, char *argv[])
 {
+    //FileFiler();
     if (argc < 4)
     {
         cout << "Usage: sendfile [1]server_ip [2]server_port [3]file_path" << endl;
@@ -113,7 +159,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    if (Send(socketDesc, file) == -1)
+    if (Send(socketDesc, file.c_str(), size) == -1)
         cout << "Sending error" << endl;
 
     close(socketDesc);

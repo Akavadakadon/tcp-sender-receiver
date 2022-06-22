@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <vector>
 #include <fstream>
 
@@ -22,8 +23,28 @@ char *getTime()
     char *date_time = ctime(&now);
     return date_time;
 }
+auto ParseHeader(char *recieved_frame, int recieved_frame_len)
+{
+    struct result
+    {
+        int rest_bytes;
+        string msg;
+        int msg_lenght;
+    };
+    int i = 0;
+    for (i = 0; recieved_frame[i] != '|'; i++)
+        ;
+    char *rest_bytes_str = new char[i];
+    strncpy(rest_bytes_str, recieved_frame, i);
+    int rest_bytes = atoi(rest_bytes_str);
 
-int SaveToFile(char const *text, char *fileName)
+    auto RR = rest_bytes < recieved_frame_len ? rest_bytes + 1 : recieved_frame_len - i;
+    string msg = string(recieved_frame + i + 1, recieved_frame + i + RR);
+    int msg_lenght = msg.length();
+    return result{rest_bytes, msg, msg_lenght};
+}
+template <typename T>
+int SaveToFile(T const text, char *fileName)
 {
 
     fstream fileStream(fileName, fstream::app);
@@ -32,8 +53,8 @@ int SaveToFile(char const *text, char *fileName)
         throw string("No such file");
     }
     fileStream << endl
-               << getTime() << endl
-               << text;
+               << getTime() << endl;
+    fileStream << text;
     fileStream.close();
     return 0;
 }
@@ -60,16 +81,26 @@ int Bind(string port = "69999")
 int Listen(int socketDesc, char *filePath)
 {
     int listen_return = listen(socketDesc, 3), newSocket, adrrSize = sizeof(sockaddr);
-    char rcvBuff[1024] = {0};
+    int buff_size = 1000;
+    char rcvBuff[buff_size] = {0};
     sockaddr address;
     if (listen_return == -1)
         return -1;
     while (true && socketDesc != -1)
     {
         newSocket = accept(socketDesc, (struct sockaddr *)&address, (socklen_t *)&adrrSize);
-        int rcvCount = read(newSocket, rcvBuff, 1024);
-        cout << rcvCount << " : " << rcvBuff << endl;
-        SaveToFile(rcvBuff, filePath);
+        string recieved_msg_str;
+        int rcvCount = read(newSocket, rcvBuff, buff_size);
+        auto recieved_msg = ParseHeader(rcvBuff, rcvCount);
+        recieved_msg_str += recieved_msg.msg;
+        while (recieved_msg.rest_bytes >= buff_size)
+        {
+            rcvCount = read(newSocket, rcvBuff, buff_size);
+            recieved_msg = ParseHeader(rcvBuff, rcvCount);
+            recieved_msg_str += recieved_msg.msg;
+        }
+
+        SaveToFile(recieved_msg_str, filePath);
     }
 
     return true;
